@@ -42,126 +42,137 @@
     _CX = {
         App: createNotifier(),
         Binding: {
-            create: function (initializer, getter, setter, destroyer) {
-                /// <param name="getter" type="Function"/>
-                /// <param name="setter" type="Function"/>
-                /// <param name="initializer" type="Function">Initialization callback</param>
-                /// <param name="destroyer" type="Function"/>
-                return {
-                    init: function (data) {
-                        if (!data || typeof data !== "object") {
-                            throw new Error("Object required");
+            create: function (create, read, update, destroy) {
+                /// <param name="read" type="Function"/>
+                /// <param name="update" type="Function"/>
+                /// <param name="create" type="Function">Initialization callback</param>
+                /// <param name="destroy" type="Function"/>
+                var _init = function (data, dataExpandos, isCreate) {
+                    if (!data || typeof data !== "object") {
+                        throw new Error("Object required");
+                    }
+                    var key, obj = {},
+                        dataCopy /* A deep copy of the param data */ = {},
+                        notifier = createNotifier(), curExpando,
+                        reserved = /^(?:on|notify|add|remove|destroy|set)$/;
+                    dataExpandos = arguments[1] || {};
+                    if (!data[expando]) {
+                        data[expando] = createId();
+                    }
+                    dataCopy[expando] = data[expando];
+                    dataExpandos[data[expando]] = true;
+                    for (key in data) {
+                        // Skip expando key.
+                        if (key !== expando) {
+                            switch (typeof data[key]) {
+                                case "function":
+                                    // Non-function values only.
+                                    break;
+                                case "object":
+                                    if (data[key] !== null) {
+                                        curExpando = data[key][expando];
+                                        if (!curExpando || !dataExpandos[curExpando]) {
+                                            dataCopy[key] = _CX.Binding.create(data[key], dataExpandos);
+                                            dataCopy[key].on("change", function () {
+                                                notifier.notify("change", key, dataCopy[key]);
+                                            });
+                                        } else { // Circular reference and break.
+                                            if (debug) {
+                                                console.log("Circular reference detected.");
+                                            }
+                                        }
+                                    }
+                                    break;
+                                default:
+                                    if (reserved.test(key)) {
+                                        if (debug) {
+                                            console.log("Library functions should not be overridden.");
+                                        }
+                                        break;
+                                    }
+                                    dataCopy[key] = data[key];
+                            }
                         }
-                        var key, obj = {},
-                            dataCopy /* A deep copy of the param data */ = {},
-                            notifier = createNotifier(), curExpando, dataExpandos = arguments[1] || {},
-                            reserved = /^(?:on|notify|add|remove|destroy|set)$/;
-                        if (!data[expando]) {
-                            data[expando] = createId();
+                    }
+                    obj.on = function () {
+                        notifier.on.apply(notifier, arguments);
+                        return obj;
+                    };
+                    obj.notify = function () {
+                        notifier.notify.apply(notifier, arguments);
+                        return obj;
+                    }
+                    obj.destroy = function () {
+                        if (typeof destroy === "function") {
+                            destroy.call(window, obj);
+                        } else {
+                            notifier.notify("destroy", dataCopy[expando]);
                         }
-                        dataCopy[expando] = data[expando];
-                        dataExpandos[data[expando]] = true;
-                        for (key in data) {
-                            // Skip expando key.
+                    };
+                    obj.set = function (key, value) {
+                        if (reserved.test(key) || key === expando) {
+                            if (debug) {
+                                console.log("Library functions should not be overridden.");
+                            }
+                            return obj;
+                        }
+                        if (typeof update === "function") {
+                            update.call(window, dataCopy, obj, key, value);
+                        } else {
+                            dataCopy[key] = value;
+                            notifier.notify("change", key, value);
+                        }
+                        return obj;
+                    };
+                    obj.get = function (key) {
+                        return dataCopy[key];
+                    };
+                    obj.getCXID = function () {
+                        return obj[expando];
+                    };
+                    obj.toStatic = function () {
+                        var key, ret = {};
+                        for (key in dataCopy) {
                             if (key !== expando) {
-                                switch (typeof data[key]) {
+                                switch (typeof dataCopy[key]) {
                                     case "function":
-                                        // Non-function values only.
                                         break;
                                     case "object":
-                                        if (data[key] !== null) {
-                                            curExpando = data[key][expando];
-                                            if (!curExpando || !dataExpandos[curExpando]) {
-                                                dataCopy[key] = _CX.Binding.create(data[key], dataExpandos);
-                                                dataCopy[key].on("change", function () {
-                                                    notifier.notify("change", key, dataCopy[key]);
-                                                });
-                                            } else { // Circular reference and break.
-                                                if (debug) {
-                                                    console.log("Circular reference detected.");
-                                                }
-                                            }
+                                        if (dataCopy[key] !== null) {
+                                            ret[key] = dataCopy[key].toStatic();
                                         }
                                         break;
                                     default:
-                                        if (reserved.test(key)) {
-                                            if (debug) {
-                                                console.log("Library functions should not be overridden.");
-                                            }
-                                            break;
-                                        }
-                                        dataCopy[key] = data[key];
+                                        ret[key] = dataCopy[key];
                                 }
                             }
                         }
-                        obj.on = function () {
-                            notifier.on.apply(notifier, arguments);
-                            return obj;
-                        };
-                        obj.notify = function () {
-                            notifier.notify.apply(notifier, arguments);
-                            return obj;
-                        }
-                        obj.destroy = function () {
-                            if (typeof destroyer === "function") {
-                                destroyer.call(window, obj);
-                            } else {
-                                notifier.notify("destroy", dataCopy[expando]);
-                            }
-                        };
-                        obj.set = function (key, value) {
-                            if (reserved.test(key) || key === expando) {
-                                if (debug) {
-                                    console.log("Library functions should not be overridden.");
-                                }
-                                return obj;
-                            }
-                            if (typeof setter === "function") {
-                                setter.call(window, dataCopy, obj, key, value);
-                            } else {
-                                dataCopy[key] = value;
-                                notifier.notify("change", key, value);
-                            }
-                            return obj;
-                        };
-                        obj.get = function (key) {
-                            if (typeof getter === "function") {
-                                return getter.call(window, dataCopy, obj, key);
-                            } else {
-                                return dataCopy[key];
-                            }
-                        };
-                        obj.getCXID = function () {
-                            return obj[expando];
-                        };
-                        obj.toStatic = function () {
-                            var key, ret = {};
-                            for (key in dataCopy) {
-                                if (key !== expando) {
-                                    switch (typeof dataCopy[key]) {
-                                        case "function":
-                                            break;
-                                        case "object":
-                                            if (dataCopy[key] !== null) {
-                                                ret[key] = dataCopy[key].toStatic();
-                                            }
-                                            break;
-                                        default:
-                                            ret[key] = dataCopy[key];
-                                    }
-                                }
-                            }
-                            return ret;
-                        };
-                        obj.toJSON = function () {
-                            return obj.toStatic();
-                        }
-                        obj[expando] = data[expando];
+                        return ret;
+                    };
+                    obj.toJSON = function () {
+                        return obj.toStatic();
+                    }
+                    obj[expando] = data[expando];
 
-                        if (typeof initializer === "function") {
-                            initializer.call(window, dataCopy, obj);
+                    if (isCreate && typeof create === "function") {
+                        create.call(window, dataCopy, obj);
+                    } else {
+                        obj.notify("init");
+                    }
+
+                    return obj;
+                };
+                return {
+                    init: function (data) {
+                        return _init(data, null, true);
+                    }, read: function () {
+                        var args = Array.prototype.slice.call(arguments);
+                        args.unshift(function (data) {
+                            return _init(data, null, false);
+                        });
+                        if (typeof read === "function") {
+                            return read.apply(window, args);
                         }
-                        return obj;
                     }
                 }
             }, createSet: function () {
@@ -254,9 +265,14 @@
             }, init: function (element, bound, bindCallback) {
                 /// <param name="element" type="HTMLElement"/>
                 /// <param name="bindCallback" type="Function"/>
+                var ret = {
+                    element: element,
+                    CXBound: bound
+                }, key;
                 if (typeof bindCallback === "function") {
                     bindCallback.call(window, element, bound);
                 }
+                return ret;
             }
         },
 

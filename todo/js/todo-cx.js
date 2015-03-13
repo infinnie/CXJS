@@ -1,5 +1,5 @@
 ﻿/// <reference path="/js/cx.js"/>
-/// Real Todo: add swiping support and localStorage support
+/// Real Todo: add swiping support and localStorage support (done)
 (function () {
     "use strict";
     document.addEventListener("DOMContentLoaded", function () {
